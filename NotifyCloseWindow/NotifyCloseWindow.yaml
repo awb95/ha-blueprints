@@ -1,0 +1,73 @@
+blueprint:
+  name: Notify Close Window
+  description: Notifies you to close open windows dependent on Season, Temperature, Time
+  domain: automation
+  input:
+    season_entity:
+      name: Season (Summer=1/Winter=0)
+      selector:
+        entity:
+          filter:            
+            domain: binary_sensor
+    window_contact_entity:
+      name: Window Contact (Open=1/Close=0)
+      selector:
+        entity:
+          filter:
+            domain: binary_sensor
+    outside_temperature_entity:
+      name: Outside Temperature            
+      selector:
+        entity:
+          filter:
+            domain: sensor
+            device_class: temperature
+    inside_temperature_entity:
+      name: Inside Temperature            
+      selector:
+        entity:
+          filter:
+            domain: sensor
+            device_class: temperature
+    setpoint_temperature_entity:
+      name: Inside Setpoint Temperature            
+      selector:
+        entity:
+          filter:
+            domain: sensor
+            device_class: temperature
+    setpoint_temperature_entity:
+      name: Inside Setpoint Temperature            
+      selector:
+        entity:
+          filter:
+            domain: sensor
+            device_class: temperature
+    light_target:
+      name: Light
+      selector:
+        target:
+          entity:
+            domain: light
+
+# If motion is detected within the delay,
+# we restart the script.
+mode: restart
+max_exceeded: silent
+
+triggers:
+  - trigger: state
+    entity_id: !input window_contact_entity    
+    to: "on"
+
+actions:
+  - action: light.turn_on
+    target: !input light_target
+#  - wait_for_trigger:
+#      - trigger: state
+#        entity_id: !input motion_entity
+#        from: "on"
+#        to: "off"
+#  - delay: !input no_motion_wait
+#  - action: light.turn_off
+#    target: !input light_target
