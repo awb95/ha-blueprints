@@ -1,7 +1,16 @@
 blueprint:
-  name: Fenster-/Temperaturüberwachung Sommer/Winter
+  name: Raumklima Sommer / Winter
   description: >
-    Wiederverwendbarer Blueprint zur Überwachung eines Raumes.
+    Überwacht Raumtemperatur, Solltemperatur, Außentemperatur und Fenster.
+
+    Sommer:
+      - Fenster offen UND Außentemperatur > Raumtemperatur > Solltemperatur
+      - Außentemperatur mindestens 2°C unter Raumtemperatur
+        UND Raumtemperatur > Solltemperatur
+
+    Winter:
+      - Raumtemperatur mindestens 5°C unter Solltemperatur
+      - Fenster länger als 30 Minuten geöffnet
 
   domain: automation
 
@@ -13,10 +22,29 @@ blueprint:
         text:
 
     summer_sensor:
-      name: Sommermodus
+      name: Sommer/Winter Sensor
+      description: on = Sommer, off = Winter
       selector:
         entity:
           domain: binary_sensor
+
+    outside_temp:
+      name: Außentemperatur
+      selector:
+        entity:
+          domain: sensor
+
+    room_temp:
+      name: Raumtemperatur
+      selector:
+        entity:
+          domain: sensor
+
+    target_temp:
+      name: Solltemperatur
+      selector:
+        entity:
+          domain: sensor
 
     window:
       name: Fensterkontakt
@@ -24,26 +52,8 @@ blueprint:
         entity:
           domain: binary_sensor
 
-    outside_room_diff:
-      name: Außentemperatur minus Raumtemperatur
-      selector:
-        entity:
-          domain: sensor
-
-    room_target_diff:
-      name: Raumtemperatur minus Solltemperatur
-      selector:
-        entity:
-          domain: sensor
-
-    target_room_diff:
-      name: Solltemperatur minus Raumtemperatur
-      selector:
-        entity:
-          domain: sensor
-
-    notify:
-      name: Notify-Dienst
+    notify_action:
+      name: Notify
       selector:
         action:
           filter:
@@ -53,121 +63,138 @@ mode: single
 
 trigger:
 
-#
-# Sommer
-#
+  - platform: state
+    entity_id: !input outside_temp
 
-  - id: summer_hot
-    platform: numeric_state
-    entity_id: !input outside_room_diff
-    above: 0
+  - platform: state
+    entity_id: !input room_temp
 
-  - id: summer_cool
-    platform: numeric_state
-    entity_id: !input outside_room_diff
-    below: -2
+  - platform: state
+    entity_id: !input target_temp
 
-#
-# Winter
-#
+  - platform: state
+    entity_id: !input summer_sensor
 
-  - id: winter_cold
-    platform: numeric_state
-    entity_id: !input target_room_diff
-    above: 5
+  - platform: state
+    entity_id: !input window
 
-  - id: winter_window
-    platform: state
+  - platform: state
     entity_id: !input window
     to: "on"
     for:
       minutes: 30
 
-condition: []
+variables:
+
+  room: !input room_name
+
+  summer_entity: !input summer_sensor
+  outside_entity: !input outside_temp
+  room_entity: !input room_temp
+  target_entity: !input target_temp
+  window_entity: !input window
+
+  summer: >
+    {{ is_state(summer_entity,'on') }}
+
+  outside: >
+    {{ states(outside_entity)|float(0) }}
+
+  inside: >
+    {{ states(room_entity)|float(0) }}
+
+  target: >
+    {{ states(target_entity)|float(0) }}
+
+  window_open: >
+    {{ is_state(window_entity,'on') }}
 
 action:
 
-  - variables:
-
-      summer: "{{ is_state(!input summer_sensor,'on') }}"
-      room_name: !input room_name
-
-      outside_room: "{{ states(!input outside_room_diff)|float }}"
-      room_target: "{{ states(!input room_target_diff)|float }}"
-      target_room: "{{ states(!input target_room_diff)|float }}"
-
   - choose:
 
-#
-# Sommer - Fenster offen obwohl draußen wärmer
-#
+      ####################################################
+      # Sommer: Fenster offen obwohl draußen wärmer
+      ####################################################
 
       - conditions:
-
-          - "{{ trigger.id == 'summer_hot' }}"
-          - "{{ summer }}"
-          - "{{ is_state(!input window,'on') }}"
-          - "{{ room_target > 0 }}"
-
+          - condition: template
+            value_template: "{{ summer }}"
+          - condition: template
+            value_template: "{{ window_open }}"
+          - condition: template
+            value_template: "{{ outside > inside }}"
+          - condition: template
+            value_template: "{{ inside > target }}"
         sequence:
 
-          - action: !input notify
+          - action: !input notify_action
             data:
-              title: "{{ room_name }}"
+              title: "{{ room }}"
               message: >
                 Fenster schließen.
-                Draußen ist es wärmer als im Raum und
-                die Raumtemperatur liegt bereits über der Solltemperatur.
+                Außen {{ outside | round(1) }}°C,
+                innen {{ inside | round(1) }}°C,
+                Soll {{ target | round(1) }}°C.
 
-#
-# Sommer - Jetzt lüften
-#
+      ####################################################
+      # Sommer: Jetzt lüften
+      ####################################################
 
       - conditions:
-
-          - "{{ trigger.id == 'summer_cool' }}"
-          - "{{ summer }}"
-          - "{{ room_target > 0 }}"
-
+          - condition: template
+            value_template: "{{ summer }}"
+          - condition: template
+            value_template: "{{ outside <= inside-2 }}"
+          - condition: template
+            value_template: "{{ inside > target }}"
         sequence:
 
-          - action: !input notify
+          - action: !input notify_action
             data:
-              title: "{{ room_name }}"
+              title: "{{ room }}"
               message: >
                 Jetzt lüften.
-                Die Außentemperatur liegt mindestens 2°C unter der Raumtemperatur.
+                Außen {{ outside | round(1) }}°C,
+                innen {{ inside | round(1) }}°C.
 
-#
-# Winter - Raum zu kalt
-#
-
-      - conditions:
-
-          - "{{ trigger.id == 'winter_cold' }}"
-          - "{{ not summer }}"
-
-        sequence:
-
-          - action: !input notify
-            data:
-              title: "{{ room_name }}"
-              message: >
-                Die Raumtemperatur liegt mehr als 5°C unter der Solltemperatur.
-
-#
-# Winter - Fenster offen
-#
+      ####################################################
+      # Winter: Raum zu kalt
+      ####################################################
 
       - conditions:
-
-          - "{{ trigger.id == 'winter_window' }}"
-          - "{{ not summer }}"
-
+          - condition: template
+            value_template: "{{ not summer }}"
+          - condition: template
+            value_template: "{{ inside <= target-5 }}"
         sequence:
 
-          - action: !input notify
+          - action: !input notify_action
             data:
-              title: "{{ room_name }}"
+              title: "{{ room }}"
               message: >
-                Das Fenster ist seit über 30 Minuten geöffnet.
+                Raumtemperatur zu niedrig.
+                Ist: {{ inside | round(1) }}°C
+                Soll: {{ target | round(1) }}°C.
+
+      ####################################################
+      # Winter: Fenster 30 Minuten offen
+      ####################################################
+
+      - conditions:
+          - condition: template
+            value_template: "{{ not summer }}"
+          - condition: template
+            value_template: >
+              {{ trigger.entity_id == window_entity }}
+          - condition: template
+            value_template: "{{ window_open }}"
+        sequence:
+
+          - action: !input notify_action
+            data:
+              title: "{{ room }}"
+              message: >
+                Fenster seit mindestens 30 Minuten geöffnet.
+
+    default: []
