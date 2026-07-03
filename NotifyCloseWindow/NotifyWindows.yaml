@@ -1,8 +1,8 @@
 blueprint:
-  name: Raumklima Sommer / Winter (stable)
+  name: Raumklima Sommer / Winter (compatible)
   description: >
-    Sommer/Winter Logik für Fenster + Temperaturvergleich.
-    Kompatibel mit Home Assistant 2026.3.x (ohne Action Selector).
+    Sommer-/Winter Logik für Fenster und Temperatur.
+    Voll kompatibel mit Home Assistant 2026.3.x Container.
 
   domain: automation
 
@@ -91,7 +91,7 @@ action:
 
   - choose:
 
-      # ---------------- SOMMER: FALSCH LÜFTEN ----------------
+      # SOMMER: Fenster falsch
       - conditions:
           - condition: template
             value_template: "{{ summer }}"
@@ -102,14 +102,14 @@ action:
           - condition: template
             value_template: "{{ inside > target }}"
         sequence:
-          - service: !input notify_service
+          - service: "{{ notify_service }}"
             data:
               title: "{{ room }}"
               message: >
                 Fenster schließen.
                 Außen {{ outside | round(1) }}°C, innen {{ inside | round(1) }}°C.
 
-      # ---------------- SOMMER: LÜFTEN ----------------
+      # SOMMER: Lüften sinnvoll
       - conditions:
           - condition: template
             value_template: "{{ summer }}"
@@ -118,28 +118,28 @@ action:
           - condition: template
             value_template: "{{ inside > target }}"
         sequence:
-          - service: !input notify_service
+          - service: "{{ notify_service }}"
             data:
               title: "{{ room }}"
               message: >
                 Jetzt lüften.
                 Außen {{ outside | round(1) }}°C, innen {{ inside | round(1) }}°C.
 
-      # ---------------- WINTER: ZU KALT ----------------
+      # WINTER: zu kalt
       - conditions:
           - condition: template
             value_template: "{{ not summer }}"
           - condition: template
             value_template: "{{ inside <= target - 5 }}"
         sequence:
-          - service: !input notify_service
+          - service: "{{ notify_service }}"
             data:
               title: "{{ room }}"
               message: >
                 Raum zu kalt.
                 Ist {{ inside | round(1) }}°C / Soll {{ target | round(1) }}°C.
 
-      # ---------------- WINTER: FENSTER OFFEN ----------------
+      # WINTER: Fenster offen 30 min
       - conditions:
           - condition: template
             value_template: "{{ not summer }}"
@@ -148,7 +148,7 @@ action:
           - condition: template
             value_template: "{{ window_open }}"
         sequence:
-          - service: !input notify_service
+          - service: "{{ notify_service }}"
             data:
               title: "{{ room }}"
               message: >
