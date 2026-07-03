@@ -1,15 +1,8 @@
 blueprint:
-  name: Raumklima Sommer / Winter (robust)
+  name: Raumklima Sommer / Winter (stable)
   description: >
-    Überwacht Raumtemperatur, Solltemperatur, Außentemperatur und Fenster.
-
-    Sommer:
-      - Fenster offen + außen wärmer als innen + innen über Soll
-      - außen mindestens 2°C kälter als innen + innen über Soll
-
-    Winter:
-      - Raumtemperatur 5°C unter Soll
-      - Fenster länger als 30 Minuten offen
+    Sommer/Winter Logik für Fenster + Temperaturvergleich.
+    Kompatibel mit Home Assistant 2026.3.x (ohne Action Selector).
 
   domain: automation
 
@@ -22,7 +15,6 @@ blueprint:
 
     summer_sensor:
       name: Sommer/Winter Sensor
-      description: on = Sommer, off = Winter
       selector:
         entity:
           domain: binary_sensor
@@ -51,11 +43,10 @@ blueprint:
         entity:
           domain: binary_sensor
 
-    notify_action:
-      name: Benachrichtigung
-      description: Notify-Aktion (mobile_app, notify, etc.)
+    notify_service:
+      name: Notify Service (z. B. notify.mobile_app_xyz)
       selector:
-        action: {}
+        text:
 
 mode: single
 
@@ -84,7 +75,6 @@ trigger:
 
 variables:
   room: !input room_name
-
   summer_entity: !input summer_sensor
   outside_entity: !input outside_temp
   room_entity: !input room_temp
@@ -101,9 +91,7 @@ action:
 
   - choose:
 
-      # ----------------------
-      # Sommer: falsch lüften
-      # ----------------------
+      # ---------------- SOMMER: FALSCH LÜFTEN ----------------
       - conditions:
           - condition: template
             value_template: "{{ summer }}"
@@ -114,18 +102,14 @@ action:
           - condition: template
             value_template: "{{ inside > target }}"
         sequence:
-          - action: !input notify_action
+          - service: !input notify_service
             data:
               title: "{{ room }}"
-              message: |
+              message: >
                 Fenster schließen.
-                Außen {{ outside | round(1) }}°C
-                Innen {{ inside | round(1) }}°C
-                Soll {{ target | round(1) }}°C
+                Außen {{ outside | round(1) }}°C, innen {{ inside | round(1) }}°C.
 
-      # ----------------------
-      # Sommer: Lüften sinnvoll
-      # ----------------------
+      # ---------------- SOMMER: LÜFTEN ----------------
       - conditions:
           - condition: template
             value_template: "{{ summer }}"
@@ -134,34 +118,28 @@ action:
           - condition: template
             value_template: "{{ inside > target }}"
         sequence:
-          - action: !input notify_action
+          - service: !input notify_service
             data:
               title: "{{ room }}"
-              message: |
+              message: >
                 Jetzt lüften.
-                Außen {{ outside | round(1) }}°C
-                Innen {{ inside | round(1) }}°C
+                Außen {{ outside | round(1) }}°C, innen {{ inside | round(1) }}°C.
 
-      # ----------------------
-      # Winter: zu kalt
-      # ----------------------
+      # ---------------- WINTER: ZU KALT ----------------
       - conditions:
           - condition: template
             value_template: "{{ not summer }}"
           - condition: template
             value_template: "{{ inside <= target - 5 }}"
         sequence:
-          - action: !input notify_action
+          - service: !input notify_service
             data:
               title: "{{ room }}"
-              message: |
+              message: >
                 Raum zu kalt.
-                Ist: {{ inside | round(1) }}°C
-                Soll: {{ target | round(1) }}°C
+                Ist {{ inside | round(1) }}°C / Soll {{ target | round(1) }}°C.
 
-      # ----------------------
-      # Winter: Fenster offen
-      # ----------------------
+      # ---------------- WINTER: FENSTER OFFEN ----------------
       - conditions:
           - condition: template
             value_template: "{{ not summer }}"
@@ -170,10 +148,10 @@ action:
           - condition: template
             value_template: "{{ window_open }}"
         sequence:
-          - action: !input notify_action
+          - service: !input notify_service
             data:
               title: "{{ room }}"
-              message: |
-                Fenster seit 30 Minuten geöffnet
+              message: >
+                Fenster seit 30 Minuten geöffnet.
 
     default: []
